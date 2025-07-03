@@ -1,0 +1,5 @@
+pandas
+sentence-transformers
+ollama
+faiss-cpu
+regex
