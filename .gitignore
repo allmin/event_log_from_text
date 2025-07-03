@@ -1,5 +1,8 @@
 mimic-iii-clinical-database*/
 mimic-iii-clinical-database*
-exports/
+exports/*
+!.gitkeep
 *.cpython*
 install.sh
+.venv/
+data/*

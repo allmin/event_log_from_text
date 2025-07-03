@@ -3,3 +3,4 @@ sentence-transformers
 ollama
 faiss-cpu
 regex
+spacy

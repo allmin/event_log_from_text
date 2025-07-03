@@ -18,8 +18,10 @@ class EventExtractor:
         for event_name, sentence in zip(self.predicted_events, self.sentences):
             self.attribute_dict_list.append(self.extract_attributes_given_event(sentence,event_name))
     
-    def extract_attributes_given_event(self, sentence, event_name):
+    def extract_attributes_given_event(self, sentence, event_name, skip_others=True):
         attributes_dict = {}
+        if skip_others and event_name == "Others":
+            return attributes_dict
         prompt = f"""You are an expert medical language model that extracts structured data from clinical notes.
 
             Given a sentence that describes a patient-related {event_name} event, your task is to:
@@ -44,8 +46,11 @@ class EventExtractor:
         json_response = self.get_json_response(prompt)
         code_match = re.search(r'```(?:json)?\s*({.*?})\s*```', json_response, re.DOTALL)
         if code_match:
-            json_str = code_match.group(1)
-            attributes_dict = json.loads(json_str)
+            try:
+                json_str = code_match.group(1)
+                attributes_dict = json.loads(json_str)
+            except Exception as e:
+                attributes_dict={"ERROR":e, "input":json_response}
         else:
             attributes_dict = {}
         return attributes_dict
@@ -59,6 +64,7 @@ class EventExtractor:
         self.extract_attributes()
         for sentence, event, attribute_dict in zip(self.sentences, self.predicted_events, self.attribute_dict_list):
             self.event_list.append({sentence:{"event":event, "attributes": attribute_dict}})
+        return self.event_list
 
     def extract_event_names(self):
         if self.event_name_model_type == "biolord":
