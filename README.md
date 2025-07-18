@@ -32,6 +32,10 @@ This project focuses on extracting event logs from textual data, specifically us
 
 6. **Run scripts and notebooks**
     - Execute all scripts and notebooks in the `scripts` directory in order (e.g., `01_*.py`, `02_*.ipynb`, ...).
+    ```bash
+    cd scripts
+    <open notebook/scipt and run>
+    ```
 
 7. **Locate event logs**
     - Extracted event logs will be available in the `exports` folder.

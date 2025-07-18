@@ -4,3 +4,5 @@ ollama
 faiss-cpu
 regex
 spacy
+streamlit
+openpyxl

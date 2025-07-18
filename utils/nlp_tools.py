@@ -30,17 +30,26 @@ class TextLib:
                 body = text
         return header, body
     
+    def get_abbreviation_variants(self,abbreviation):
+        """
+        Returns all variants of an abbriviation. for example pt -> Pt, PT
+        """
+        variants = [abbreviation, abbreviation.upper(), abbreviation.capitalize()]
+        return variants
+        
+    
     def replace_abbreviations(self, text, abbreviation_dict=None):
         for expansion,abbreviation_list in abbreviation_dict.items():
-            for abbr in abbreviation_list:
-                if abbr.endswith('.'):
-                    abbr=abbr.replace(".","\\.")
-                    pattern = rf'\b{abbr}'
-                if "/" in abbr:
-                    pattern = rf"(?<=\s){abbr}(?=\s)"
-                else:
-                    pattern = rf'\b{abbr}\b'                
-                text = re.sub(pattern, expansion, text)
+            for abbr_key in abbreviation_list:
+                for abbr in self.get_abbreviation_variants(abbr_key):    
+                    if abbr.endswith('.'):
+                        abbr=abbr.replace(".","\\.")
+                        pattern = rf'\b{abbr}'
+                    if "/" in abbr:
+                        pattern = rf"(?<=\s){abbr}(?=\s)"
+                    else:
+                        pattern = rf'\b{abbr}\b'                
+                    text = re.sub(pattern, expansion, text)
         return text
 
     @staticmethod
@@ -60,8 +69,14 @@ class TextLib:
                 elif (token.i + 4) < len(doc) and doc[token.i + 4].text.strip(' ') == ':': #\n Title Title Title : BlaBla
                     doc[token.i + 1].is_sent_start = True
                     doc[token.i + 2].is_sent_start = False
+            
             if token.text.strip(' ') =='\n\n' or token.text.strip(' ') =='\n\n\n':
-                doc[token.i + 1].is_sent_start = True
+                if (token.i + 1) < len(doc):
+                    doc[token.i + 1].is_sent_start = True
+            
+            if token.text == ';':
+                if (token.i + 1) < len(doc):
+                    doc[token.i + 1].is_sent_start = True
         return doc
 
     def sentence_splitter(self, text, span=True):
