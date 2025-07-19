@@ -7,6 +7,8 @@ import ollama
 import regex as re
 import pandas as pd
 import sys, os
+from itertools import product
+
 parent_dir = os.path.abspath(os.path.join(os.getcwd(), '..'))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
@@ -18,23 +20,17 @@ class EventExtractor:
         self.is_event_model_type = is_event_model_type
         self.attribute_model_type = attribute_model_type
         self.error_logs = []
+        self.event_name_prompt_list = []
         if event_name_model_type == "biolord":
             self.model = SentenceTransformer('FremyCompany/BioLORD-2023')
         elif event_name_model_type == "dictionary":
-            self.dictionary_df = pd.read_excel("../resources/keyword_dict_annotated.xlsx")
-            self.dictionary = {i:j for i,j,p in zip(self.dictionary_df['label'], self.dictionary_df['class'], self.dictionary_df['positive']) if p==1}
-            
-            self.lemma_data = self.get_lemma_data()
-            
-            #update self.dictionary with all other forms of the key of the same lemma
-            for forms in self.lemma_data['all_forms']:
-                for form in forms:
-                    if form in self.dictionary.keys():
-                        event_name = self.dictionary[form]
-                        self.dictionary.update({i:event_name for i in forms if i not in self.dictionary.keys()})
-                        break
+            self.dictionary_input_df = pd.read_excel("../resources/keyword_dict_annotated.xlsx")
+            self.lemma_data = self.get_lemma_data() #['lemma', 'all_forms']
+            self.dictionary_positive_lemmas = {lemma_keyword:event_type for keyword,event_type,positive in zip(self.dictionary_input_df['label'], self.dictionary_input_df['class'], self.dictionary_input_df['positive']) if positive==1 for lemma_keyword in self.lemmatize_keyword(keyword)}
+            #update self.dictionary_positive_lemmas with all other forms of the key of the same lemma
+            self.dictionary_positive_lemmas = {form:event_type for (lemma,event_type) in self.dictionary_positive_lemmas.items() for form in self.get_all_forms(lemma)}
             #write self.dictionary to a file "resources/keyword_dict_annotated_with_medication_expanded.xlsx"
-            self.dictionary_expanded_df = pd.DataFrame(list(self.dictionary.items()), columns=['label', 'class'])
+            self.dictionary_expanded_df = pd.DataFrame(list(self.dictionary_positive_lemmas.items()), columns=['label', 'class'])
             #soring the dataframe by class
             self.dictionary_expanded_df.sort_values(by=['class','label'],ascending = True, inplace=True)
             self.dictionary_expanded_df.to_excel("../resources/keyword_dict_annotated_expanded.xlsx", index=False)
@@ -44,23 +40,53 @@ class EventExtractor:
         self.event_name_cache = {}
         self.attribute_cache = {}
         self.event_attribute_cache = {}
-        
-    def extract_events(self, sentences, event_names, threshold=0.2):
-
+    
+    
+    def lemmatize_keyword(self,keyword):
+        lemma_dict = {}
+        for sub_keyword in keyword.split("_"):
+            returned_lemmas = self.lemma_data[self.lemma_data['all_forms'].apply(lambda x: sub_keyword in x)]['lemma'].tolist()
+            if len(returned_lemmas) == 0:
+                returned_lemmas = [sub_keyword]
+            lemma_dict[sub_keyword] = returned_lemmas
+        combinations = ['_'.join(p) for p in product(*lemma_dict.values())]
+        return combinations
+    
+    def flatten_list_of_lists(self,list_of_lists):
+        return [item for sublist in list_of_lists for item in sublist]
+    
+    def get_all_forms(self,lemma):
+        all_form_dict = {}
+        for sub_lemma in lemma.split("_"):
+            returned_all_forms = self.lemma_data[self.lemma_data['lemma'] == sub_lemma]['all_forms'].tolist()
+            returned_all_forms = self.flatten_list_of_lists(returned_all_forms)
+            if len(returned_all_forms) == 0:
+                 returned_all_forms = [sub_lemma]
+            all_form_dict[sub_lemma] = returned_all_forms
+        combinations = ['_'.join(p) for p in product(*all_form_dict.values())]
+        return combinations
+    
+    def extract_events(self, sentences, event_names, threshold=0.2, prompt_evidence={'keywords':[],'event_names':[],'similarities':[]}):
         self.event_list = []
         self.sentences = sentences
         self.similarities_dict = [{}]*len(self.sentences)
         self.keywords = [""]*len(self.sentences)
         self.predefined_event_names = event_names
+        self.predefined_event_names_w_unknown = event_names + ["Unknown"]
         self.threshold = threshold
+        self.prompt_evidence = prompt_evidence
         self.extract_is_event()
         self.extract_event_names()
         self.extract_attributes()
-        for sentence, event, similarity_dict, keyword, attribute_dict in zip(self.sentences, self.predicted_events, self.similarities_dict, self.keywords, self.attribute_dict_list ):
+        if len(self.event_name_prompt_list) != len(self.sentences):
+            self.event_name_prompt_list = [""]*len(self.sentences)
+        for sentence, event, similarity_dict, keyword, attribute_dict, prompt in zip(self.sentences, self.predicted_events, self.similarities_dict, self.keywords, self.attribute_dict_list, self.event_name_prompt_list ):
             if self.event_name_model_type == "biolord":
                 self.event_list.append({"sentence":sentence, "event":event, "similarity":similarity_dict, "attributes": attribute_dict})
             elif self.event_name_model_type == "dictionary":
                 self.event_list.append({"sentence":sentence, "event":event, "keyword":keyword, "attributes": attribute_dict})
+            elif self.event_name_model_type == "llama3":
+                self.event_list.append({"sentence":sentence, "event":event, "keyword":keyword, "attributes": attribute_dict, "event_name_prompt":prompt})
             else:
                 self.event_list.append({"sentence":sentence, "event":event, "attributes": attribute_dict})
         return self.event_list
@@ -73,6 +99,7 @@ class EventExtractor:
         if self.attribute_model_type != "llama3":
             return attributes_dict
         if sentence in self.event_name_cache:
+            print("skipping LLM since sentence found in cache")
             return self.event_name_cache[sentence]
         prompt = f"""You are an expert medical language model that extracts structured data from clinical notes.
 
@@ -115,14 +142,11 @@ class EventExtractor:
         if sentence in self.event_attribute_cache:
             return self.event_attribute_cache[sentence]
         prompt = f"""You are an expert medical language model that extracts structured data from clinical notes.
-
             Given a sentence that describes a patient-related event among {self.predefined_event_names}, your task is to:
             1. Detect the main event in the sentence among {self.predefined_event_names}. If nothing applies, set it as "Unknown".
             2. Detect the relevant attribute types associated with that main event (e.g., location, quality, duration, time, medication, dosage, etc.).
             3. Extract the corresponding attribute values from the sentence.
-
             Only extract attributes that are explicitly mentioned. Do not infer missing information.
-
             ### Input Sentence:
             "{sentence}"
 
@@ -173,11 +197,12 @@ class EventExtractor:
                 self.predicted_events.append(self.event_name_cache[sentence])
                 continue
             for index,(keyword, event_name) in enumerate(self.dictionary.items()):
-                if re.search(rf'\b{re.escape(keyword)}\b', sentence, re.IGNORECASE):
-                    num_of_occurrence = len(re.findall(rf'\b{re.escape(keyword)}\b', sentence, re.IGNORECASE))
+                keyword_w_space = keyword.replace('_', ' ')
+                if re.search(rf'\b{re.escape(keyword_w_space)}\b', sentence, re.IGNORECASE):
+                    num_of_occurrence = len(re.findall(rf'\b{re.escape(keyword_w_space)}\b', sentence, re.IGNORECASE))
                     for i in range(num_of_occurrence):
                         sentence_events.append(event_name)
-                        sentence_keywords.append(keyword)
+                        sentence_keywords.append(keyword_w_space)
             if len(sentence_events)==0 and index==len(self.dictionary)-1:
                 self.predicted_events.append(["Unknown"])
                 self.keywords.append([])
@@ -251,7 +276,7 @@ class EventExtractor:
         return events
 
     def get_json_response(self, prompt):
-        response = ollama.generate(model='llama3', prompt=prompt, options={"temperature": 0}, format='json')
+        response = ollama.generate(model='llama3.1:70b', prompt=prompt, options={"temperature": 0}, format='json')
         raw_output = response['response'].strip()
         # json_response = re.search(r'\{.*?\}', raw_output)
         json_response = re.search(r'\{(?:[^{}]|(?R))*\}', raw_output, re.DOTALL)
@@ -288,24 +313,47 @@ class EventExtractor:
                     is_event = False
                 self.is_event_cache[sentence]=is_event
                 self.is_events.append(is_event)
-            
+    
+    def get_evidence(self,ind):
+        additional_facts_clause = "\n You may consider the additional facts if they are reasonable. Ignore otherwise"
+        if len(self.prompt_evidence["keywords"]) == 0 and len(self.prompt_evidence["similarities"]) == 0:
+            evidence = ""
+        elif len(self.prompt_evidence["keywords"])!=0 and len(self.prompt_evidence["similarities"]) == 0:
+            evidence = f"""Additional facts:
+            A keyword matching algorithm without context, detected keyword(s): {self.prompt_evidence["keywords"][ind]}
+            and assigned event type: {self.prompt_evidence["event_names"][ind]}.""" + additional_facts_clause
+        elif len(self.prompt_evidence["keywords"])==0 and len(self.prompt_evidence["similarities"])!= 0:
+            evidence = f"""Additional facts:
+            A sentence embedder, assigned following similarity score to  
+            each of the event type labels: {self.prompt_evidence["similarities"][ind]}.""" + additional_facts_clause
+        elif len(self.prompt_evidence["keywords"])!=0 and len(self.prompt_evidence["similarities"])!= 0:
+            evidence = f"""Additional facts:
+            A keyword matching algorithm without context, detected keyword(s): {self.prompt_evidence["keywords"][ind]}
+            and assigned event type: {self.prompt_evidence["event_names"][ind]}
+            A sentence embedder, assigned following similarity score to  
+            each of the event type labels: {self.prompt_evidence["similarities"][ind]}.""" + additional_facts_clause       
+        return evidence                            
             
     def extract_event_names_llama(self):
         self.predicted_events = []
-        
-        for sentence in self.sentences:
+        for ind, sentence in enumerate(self.sentences):
             if sentence in self.event_name_cache:
                 self.predicted_events.append(self.event_name_cache[sentence])
-            else:                
-                prompt = f"""Does this sentence describe an activity related to any of {self.predefined_event_names}?. 
-                Output ONLY a JSON: {{"is_activity":<boolean>}}
-                Sentence: {sentence}"""
+            else:
+                evidence = self.get_evidence(ind)    
+                prompt = f"""Given the sentence: {sentence}. 
+                and the following event types: {self.predefined_event_names_w_unknown}
+                choose the most relevant event type(s) for this sentence.
+                choose "Unknown" if none of the other event type are applicable.
+                {evidence}
+                Output ONLY a JSON: {{"event type":<chosen event type>}}"""
+                self.event_name_prompt_list.append(prompt)
                 json_response = self.get_json_response(prompt)
                 
                 if json_response:
                     try:
                         event = json.loads(json_response)
-                        event_name = event.get("event_name", "Unknown")
+                        event_name = event.get("event type", "Unknown")
                     except json.JSONDecodeError:
                         event_name = "Unknown"
                 
@@ -327,14 +375,29 @@ class EventExtractor:
         return lemma_data
     
 if __name__ == "__main__":
-    # msentences = ["My right knee hurts", "The patient is sleeping well", "He had acetaminophen 500mg", "He met his family"]
-    # ["ALL NIGHT.","NAPS COMFORTABLY", "SLEEPS COMFORTABLY" ]
-    msentences = ["He slept well","He slept well","Trigonometry"]
+    msentences = ["He slept well","He slept well","He began to break bread","Trigonometry"]
     mevent_names = ["Pain", "Sleep", "Alert And Oriented"]
     # BIOLORDLLAMA = EventExtractor(is_event_model_type='llama3', attribute_model_type='llama3')
     # BIOLORDLLAMA = EventExtractor(event_name_model_type='dictionary', attribute_model_type='None')
-    BIOLORDLLAMA = EventExtractor(event_name_model_type='dictionary', attribute_model_type='None')
-    BIOLORDLLAMA.extract_events(sentences=msentences, event_names=mevent_names)
-    # print(BIOLORDLLAMA.lemma_data)
-    print(BIOLORDLLAMA.event_list)
+    DICT = EventExtractor(event_name_model_type='dictionary', attribute_model_type='None')
+    DICT.extract_events(sentences=msentences, event_names=mevent_names)
+    print("Dictionary_events:",DICT.event_list)
+    
+    BIOLORD = EventExtractor(event_name_model_type='biolord', attribute_model_type='None')
+    BIOLORD.extract_events(sentences=msentences, event_names=mevent_names)
+    print("BIOLORD_events:",BIOLORD.event_list)
+    
+    LLAMA1 = EventExtractor(event_name_model_type='llama3', attribute_model_type='None')
+    
+    LLAMA1.extract_events(sentences=msentences, event_names=mevent_names)
+    print("LLAMA_no_evidence_events:",LLAMA1.event_list)
+ 
+    LLAMA2 = EventExtractor(event_name_model_type='llama3', attribute_model_type='None')   
+    LLAMA2.extract_events(sentences=msentences, event_names=mevent_names, 
+                                prompt_evidence={'keywords':DICT.keywords, 
+                                                 'event_names':DICT.predicted_events, 
+                                                 'similarities':BIOLORD.similarities_dict})
+    print("LLAMA_all_evidence_events:",LLAMA2.event_list)
+    
+
 

@@ -6,3 +6,5 @@ regex
 spacy
 streamlit
 openpyxl
+python-dotenv
+matplotlib

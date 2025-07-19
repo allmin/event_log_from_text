@@ -38,7 +38,7 @@ def extract_events(sentences):
     return events
 
 
-for model in ["dictionary"]:
+for model in ["dictionary", "biolord"]:
     extractor = EventExtractor(event_name_model_type=model, attribute_model_type="None")
 
     export_folder = f"../exports/selected_reports_with_event_log_only_{model}"

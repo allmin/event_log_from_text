@@ -23,12 +23,13 @@ This project focuses on extracting event logs from textual data, specifically us
     python -m spacy download en_core_web_lg
     ```
 
-5. **Prepare MIMIC CSV files**
-    - Extract all MIMIC CSV files into a folder.
-    - Set the environment variable `MIMICSPATH` to the path of this folder:
-      ```bash
-      export MIMICSPATH=/path/to/mimic/csvs
-      ```
+ 5. **Prepare MIMIC CSV Files**
+
+- Extract all MIMIC CSV files into a folder.
+- In the main project directory, create a `.env` file and specify the path to the extracted folder as follows:
+
+  ```dotenv
+  MIMICPATH=/path/to/mimic/csvs
 
 6. **Run scripts and notebooks**
     - Execute all scripts and notebooks in the `scripts` directory in order (e.g., `01_*.py`, `02_*.ipynb`, ...).
