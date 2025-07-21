@@ -33,7 +33,7 @@ from utils.event_extractor import EventExtractor  # re-import your class if need
 def extract_events(sentences):
     global extractor, report_counter
     report_counter+=1
-    event_types = ["Pain", "Sleep", "Alert And Oriented", "Excretion", "Eating", "Family"]
+    event_types = ["Pain", "Sleep", "Excretion", "Eating", "Family"]
     events = extractor.extract_events(sentences=sentences, event_names=event_types, threshold=0.2)
     return events
 

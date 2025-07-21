@@ -8,3 +8,4 @@ streamlit
 openpyxl
 python-dotenv
 matplotlib
+seaborn
