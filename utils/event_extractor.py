@@ -22,7 +22,6 @@ class EventExtractor:
         self.is_event_model_type = is_event_model_type
         self.attribute_model_type = attribute_model_type
         self.error_logs = []
-        self.event_name_prompt_list = []
         if event_name_model_type == "biolord":
             self.model = SentenceTransformer('FremyCompany/BioLORD-2023')
         elif event_name_model_type == "dictionary":
@@ -40,6 +39,8 @@ class EventExtractor:
                              
         self.is_event_cache = {}
         self.event_name_cache = {}
+        self.keywords_cache = {}
+        self.lemmas_cache = {}
         self.attribute_cache = {}
         self.event_attribute_cache = {}
     
@@ -74,6 +75,7 @@ class EventExtractor:
         self.similarities_dict = [{}]*len(self.sentences)
         self.keywords = [""]*len(self.sentences)
         self.lemmas = [""]*len(self.sentences)
+        self.event_name_prompt_list = [""]*len(self.sentences)
         self.predefined_event_names = event_names
         self.predefined_event_names_w_unknown = event_names + ["Unknown"]
         self.threshold = threshold
@@ -81,10 +83,9 @@ class EventExtractor:
         self.extract_is_event()
         self.extract_event_names()
         self.extract_attributes()
-        if len(self.event_name_prompt_list) == 0:
-            self.event_name_prompt_list = [""]*len(self.sentences)
         if len(self.event_detection_time) == 0:
             self.event_detection_time = [""]*len(self.sentences)
+        # print(f"{len(self.sentences)}, {len(self.predicted_events)}, {len(self.similarities_dict)}, {len(self.keywords)}, {len(self.lemmas)}, {len(self.attribute_dict_list)}, {len(self.event_name_prompt_list)} ,{len(self.event_detection_time)}")
         for sentence, event, similarity_dict, keyword, lemma, attribute_dict, prompt, time in zip(self.sentences, self.predicted_events, self.similarities_dict, self.keywords, self.lemmas, self.attribute_dict_list, self.event_name_prompt_list ,self.event_detection_time):
             if self.event_name_model_type == "biolord":
                 self.event_list.append({"sentence":sentence, "event":event, "similarity":similarity_dict, "attributes": attribute_dict, "event_detection_time":time})
@@ -189,6 +190,7 @@ class EventExtractor:
         if self.event_name_model_type == "llama3":
             self.extract_event_names_llama()
         if self.event_name_model_type == "dictionary":
+            self.dictionary = {form:values for (form,values) in self.dictionary.items() if values["event_type"] in self.predefined_event_names}
             self.extract_event_names_dictionary()
             
     
@@ -197,33 +199,36 @@ class EventExtractor:
         self.event_detection_time = []
         self.keywords = []
         self.lemmas = []
-        for sentence in self.sentences:
+        for ind,sentence in enumerate(self.sentences):
             start_time = time.perf_counter()
             sentence_events = []
             sentence_keywords = []
             sentence_lemmas = []
-            lemmas = []
             if sentence in self.event_name_cache:
                 self.predicted_events.append(self.event_name_cache[sentence])
-                continue
-            for index,(keyword, event_name_lemma_dict) in enumerate(self.dictionary.items()):
-                keyword_w_space = keyword.replace('_', ' ')
-                if re.search(rf'\b{re.escape(keyword_w_space)}\b', sentence, re.IGNORECASE):
-                    num_of_occurrence = len(re.findall(rf'\b{re.escape(keyword_w_space)}\b', sentence, re.IGNORECASE))
-                    event_name = event_name_lemma_dict['event_type']
-                    lemma = event_name_lemma_dict['lemma']
-                    for i in range(num_of_occurrence):
-                        sentence_events.append(event_name)
-                        sentence_keywords.append(keyword_w_space)
-                        sentence_lemmas.append(lemma)
-            if len(sentence_events)==0 and index==len(self.dictionary)-1:
-                self.predicted_events.append(["Unknown"])
-                self.keywords.append([])
-                self.lemmas.append([])
+                self.keywords.append(self.keywords_cache[sentence])
+                self.lemmas.append(self.lemmas_cache[sentence])
             else:
+                for index,(keyword, event_name_lemma_dict) in enumerate(self.dictionary.items()):
+                    keyword_w_space = keyword.replace('_', ' ')
+                    if re.search(rf'\b{re.escape(keyword_w_space)}\b', sentence, re.IGNORECASE):
+                        num_of_occurrence = len(re.findall(rf'\b{re.escape(keyword_w_space)}\b', sentence, re.IGNORECASE))
+                        event_name = event_name_lemma_dict['event_type']
+                        lemma = event_name_lemma_dict['lemma']
+                        for i in range(num_of_occurrence):
+                            sentence_events.append(event_name)
+                            sentence_keywords.append(keyword_w_space)
+                            sentence_lemmas.append(lemma)
+                if len(sentence_events)==0 and index==len(self.dictionary)-1:
+                    sentence_events = ["Unknown"]
+                    sentence_keywords = [""]
+                    sentence_lemmas = [""]
                 self.predicted_events.append(sentence_events)
                 self.keywords.append(sentence_keywords)
                 self.lemmas.append(sentence_lemmas)
+                self.event_name_cache[sentence] = sentence_events
+                self.keywords_cache[sentence] = sentence_keywords
+                self.lemmas_cache[sentence] = sentence_lemmas
             end_time = time.perf_counter()  # End timing
             elapsed_time = end_time - start_time
             self.event_detection_time.append(elapsed_time)
@@ -371,22 +376,25 @@ class EventExtractor:
             evidence = self.get_evidence(ind)    
             prompt = f"""Given the sentence: {sentence}. 
             and the following event types: {self.predefined_event_names_w_unknown}
-            choose the most relevant event type(s) for this sentence.
+            choose the most relevant event type(s) for this sentence alonf with keywords in the sentence that support each event_type.
             choose "Unknown" if none of the other event type are applicable.
             {evidence}
-            Output ONLY a JSON: {{"event type":<chosen event type>}}"""
+            Output ONLY a JSON: {{"event type":<chosen event type>,"keywords":{{<chosen event type>:<keyword>}}}}"""
             if sentence in self.event_name_cache:
                 self.predicted_events.append(self.event_name_cache[sentence])
+                self.keywords.append(self.keywords_cache[sentence])
             else:                
                 json_response = self.get_json_response(prompt)
                 if json_response:
                     try:
                         event = json.loads(json_response)
                         event_name = event.get("event type", "Unknown")
+                        keywords = event.get("keywords", "")
                     except json.JSONDecodeError:
                         event_name = "Unknown"
                 self.predicted_events.append(event_name)
                 self.event_name_cache[sentence]=event_name
+                self.keywords_cache[sentence]=keywords
             self.event_name_prompt_list.append(prompt)
             end_time = time.perf_counter()
             elapsed_time = end_time - start_time

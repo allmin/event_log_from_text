@@ -29,22 +29,25 @@ from utils.event_extractor import EventExtractor  # re-import your class if need
 
 
 
-
+report_counter = 0
 def extract_events(sentences):
+    # print(sentences)
     global extractor, report_counter
     report_counter+=1
     event_types = ["Pain", "Sleep", "Excretion", "Eating", "Family"]
     events = extractor.extract_events(sentences=sentences, event_names=event_types, threshold=0.2)
+    assert(len(sentences)==len(events)), f"{len(events)}, {events}, {len(sentences)}, {sentences}"
+    # print(report_counter,len(sentences))
     return events
 
-
-for model in ["dictionary", "biolord"]:
+suffix = "7_14_days"
+for model in ["dictionary","biolord"]:
     extractor = EventExtractor(event_name_model_type=model, attribute_model_type="None")
 
     export_folder = f"../exports/selected_reports_with_event_log_only_{model}"
     os.makedirs(export_folder,exist_ok=True)
     batch_size = 5000
-    notes_selected = pd.read_pickle("../exports/filtered_patient_reports_v2.pkl")
+    notes_selected = pd.read_pickle(f"../exports/filtered_patient_reports_{suffix}.pkl")
     notes_selected["Events"] = ''
     
     for i in range(0, len(notes_selected), batch_size):
@@ -52,10 +55,10 @@ for model in ["dictionary", "biolord"]:
         batch = notes_selected.iloc[i:i+batch_size]
         batch["Events"] = batch['Sentences_Cleaned'].apply(extract_events)
         batch.to_pickle(f"{export_folder}/batch_{i//batch_size:08d}.pkl")
-    batch_files = sorted(glob.glob(f"../{export_folder}/batch_*.pkl"))
+    batch_files = sorted(glob.glob(f"{export_folder}/batch_*.pkl"))
     if len(batch_files) == 0:
         batch.to_pickle(f"{export_folder}/combined.pkl")
     else:
         combined_df = pd.concat([pd.read_pickle(f) for f in batch_files], ignore_index=True)
-        combined_df.to_pickle(f"..{export_folder}/combined.pkl")
+        combined_df.to_pickle(f"{export_folder}/combined.pkl")
     print(f"Combined file saved to {export_folder}/combined.pkl, at {datetime.now().strftime('%H:%M:%S')}")
