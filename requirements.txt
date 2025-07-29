@@ -9,3 +9,4 @@ openpyxl
 python-dotenv
 matplotlib
 seaborn
+nltk

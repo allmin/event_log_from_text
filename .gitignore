@@ -7,3 +7,7 @@ install.sh
 .venv/
 data/*
 todo.md
+recycle_bin/*
+utils/test*
+
+
