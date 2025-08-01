@@ -3,6 +3,8 @@ import os, sys
 from datetime import datetime
 from glob import glob
 
+from sklearn.metrics import f1_score, precision_score, recall_score
+
 parent_dir = os.path.abspath(os.path.join(os.getcwd(), '..'))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
@@ -24,7 +26,7 @@ if parent_dir not in sys.path:
 report_counter = 0
 import importlib
 import utils.event_extractor  # your module
-import glob, os
+import os
 importlib.reload(utils.event_extractor)
 from utils.event_extractor import EventExtractor  # re-import your class if needed
 
@@ -95,10 +97,12 @@ def extract_events(model,sentences):
 
 version=2
 for ET in ["Sleep", "Excretion"]:
-    for model in ["dictionary","biolord"]:
+    os.makedirs(f"../exports/iter2/{ET}",exist_ok=True)
+
+    for model in ["dictionary"]:
         print(f"{ET}_{model}")
         if model == "dictionary":
-            dictionary_file = "resources/keyword_dict_annotated_iter2.xlsx"
+            dictionary_file = "../resources/keyword_dict_annotated_iter2.xlsx"
         else:
             dictionary_file = None
         
@@ -106,9 +110,26 @@ for ET in ["Sleep", "Excretion"]:
         os.makedirs(export_folder,exist_ok=True)
 
         notes_selected = pd.read_excel(glob(f"../exports/groundtruth/Annotated/{ET}*.xlsx")[0])
+        notes_selected = notes_selected.groupby("UID")[[f"{ET}_similarity", f"gt_{ET}", "is_keyword_present", "Sentence_dictionary","Lemma"]].agg(lambda x: max(x) if len(set(x))>1 else set(x).pop()).reset_index()
         notes_selected["Events"] = extract_events(model,notes_selected.Sentence_dictionary)
+        notes_selected["Keyword_dictionary_New"] = notes_selected["Events"].apply(lambda x: x['keyword'])
+        notes_selected["Event_Name_dictionary_New"] = notes_selected["Events"].apply(lambda x: x['event'])
+        notes_selected["is_keyword_present_new"] = notes_selected["Events"].apply(lambda x: ET in x['event'])
         # notes_selected = notes_selected.groupby("UID")[[f"{ET}_similarity", f"gt_{ET}", "is_keyword_present", "Sentence_dictionary"]].agg(lambda x: max(x) if len(set(x))>1 else set(x).pop()).reset_index()
         # notes_selected.dropna(subset=f"gt_{ET}",inplace=True)
+        y_true = notes_selected[f"gt_{ET}"].astype(int)
+        y_pred = notes_selected["is_keyword_present"].astype(int)
+        y_pred2 = notes_selected["is_keyword_present_new"].astype(int)
+        f1 = f1_score(y_true, y_pred)
+        precision = precision_score(y_true, y_pred)
+        recall = recall_score(y_true, y_pred)
+        f12 = f1_score(y_true, y_pred2)
+        precision2 = precision_score(y_true, y_pred2)
+        recall2 = recall_score(y_true, y_pred2)
+
+        print(f"F1 Score: {f1:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}")
+        print(f"F1 Score: {f12:.4f}, Precision: {precision2:.4f}, Recall: {recall2:.4f}")
+        
         notes_selected.to_excel(f"../exports/iter2/{ET}/{model}.xlsx")
         
         
