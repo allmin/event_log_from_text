@@ -3,8 +3,13 @@ import pandas as pd
 import re
 import os
 from glob import glob
+all_paths = glob("../exports/groundtruth/**/**")
+only_folders = [p for p in all_paths if os.path.isdir(p)]
+only_folders = [p for p in only_folders if "Annotating" in p]
 
-excel_files = glob("../exports/groundtruth/Annotating/*.xlsx")
+# Streamlit selectbox
+annotation_folder = st.selectbox("Select Annotation Folder", only_folders)
+excel_files = glob(f"{annotation_folder}/*.xlsx")
 FILE_PATH = st.selectbox("Select Excel File", excel_files)
 
 if ("FILE_PATH" not in st.session_state) or st.session_state['FILE_PATH'] != FILE_PATH:

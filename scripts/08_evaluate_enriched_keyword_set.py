@@ -27,6 +27,8 @@ report_counter = 0
 import importlib
 import utils.event_extractor  # your module
 import os
+from sklearn.metrics import confusion_matrix
+from statsmodels.stats.contingency_tables import mcnemar
 importlib.reload(utils.event_extractor)
 from utils.event_extractor import EventExtractor  # re-import your class if needed
 
@@ -104,12 +106,17 @@ for ET in ["Sleep", "Excretion"]:
         if model == "dictionary":
             dictionary_file = "../resources/keyword_dict_annotated_iter2.xlsx"
         else:
-            dictionary_file = None
+            dictionary_file = "../resources/keyword_dict_annotated.xlsx"
         
         export_folder = f"../exports/selected_reports_with_event_log_only_{model}_v{version}"
         os.makedirs(export_folder,exist_ok=True)
 
-        notes_selected = pd.read_excel(glob(f"../exports/groundtruth/Annotated/{ET}*.xlsx")[0])
+        # notes_selected1 = pd.read_excel(glob(f"../exports/groundtruth/Annotated/Old_Annotations/{ET}*.xlsx")[0])
+        # notes_selected2 = pd.read_excel(glob(f"../exports/groundtruth/Annotated/{ET}*.xlsx")[0])
+        # notes_selected = notes_selected1[~notes_selected1.UID.isin(notes_selected2.UID)]
+        
+        notes_selected = pd.read_excel(glob(f"../exports/groundtruth/Test2/Annotated/{ET}*.xlsx")[0])
+
         notes_selected = notes_selected.groupby("UID")[[f"{ET}_similarity", f"gt_{ET}", "is_keyword_present", "Sentence_dictionary","Lemma"]].agg(lambda x: max(x) if len(set(x))>1 else set(x).pop()).reset_index()
         notes_selected["Events"] = extract_events(model,notes_selected.Sentence_dictionary)
         notes_selected["Keyword_dictionary_New"] = notes_selected["Events"].apply(lambda x: x['keyword'])
@@ -126,10 +133,22 @@ for ET in ["Sleep", "Excretion"]:
         f12 = f1_score(y_true, y_pred2)
         precision2 = precision_score(y_true, y_pred2)
         recall2 = recall_score(y_true, y_pred2)
-
+        print(y_true.value_counts())
+        cm = confusion_matrix(y_true, y_pred)
+        print("Confusion Matrix (y_true vs y_pred):")
+        print(cm)
         print(f"F1 Score: {f1:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}")
-        print(f"F1 Score: {f12:.4f}, Precision: {precision2:.4f}, Recall: {recall2:.4f}")
         
+        cm = confusion_matrix(y_true, y_pred2)
+        print("Confusion Matrix (y_true vs y_pred2):")
+        print(cm)
+        print(f"F1 Score: {f12:.4f}, Precision: {precision2:.4f}, Recall: {recall2:.4f}")
+        # Build 2x2 contingency table for McNemar's test
+        tb = pd.crosstab(y_pred, y_pred2, rownames=['y_pred'], colnames=['y_pred2'])
+        # Ensure the table is 2x2
+        tb = tb.reindex(index=[0,1], columns=[0,1], fill_value=0)
+        result = mcnemar(tb, exact=True)
+        print("McNemar's test statistic=%.4f, p-value=%.4f" % (result.statistic, result.pvalue))
         notes_selected.to_excel(f"../exports/iter2/{ET}/{model}.xlsx")
         
         
