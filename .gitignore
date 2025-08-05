@@ -1,6 +1,7 @@
 mimic-iii-clinical-database*/
 mimic-iii-clinical-database*
 exports/*
+!exports/groundtruth/**
 !.gitkeep
 *.cpython*
 install.sh
