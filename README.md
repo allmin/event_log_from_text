@@ -6,7 +6,7 @@ This project focuses on extracting event logs from textual data, specifically us
 
 1. **Clone the repository**
     ```bash
-    git clone <repository-url>
+    git clone https://github.com/allmin/event_log_from_text.git
     cd event_log_from_text
     ```
 
