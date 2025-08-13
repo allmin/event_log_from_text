@@ -30,7 +30,7 @@ similarity_columns = ["Excretion"]#,"Sleep","Pain","Eating","Family"]
 for get_keyword, get_phrase in [i for i in product([False,True],[False,True])]:
     for ET in similarity_columns:
         os.makedirs(f"../exports/llm/{ET}", exist_ok=True)
-        file = glob(f"../exports/groundtruth/Generated/{ET}*.pkl")[0]
+        file = glob(f"../exports/groundtruth/F-SET/Generated/{ET}*.pkl")[0]
         file_name = os.path.basename(file).strip(".pkl")
         df = pd.read_pickle(file)
         df.Similarity = df.Similarity.astype(str)
