@@ -110,12 +110,8 @@ for ET in ["Sleep", "Excretion"]:
         
         export_folder = f"../exports/selected_reports_with_event_log_only_{model}_v{version}"
         os.makedirs(export_folder,exist_ok=True)
-
-        # notes_selected1 = pd.read_excel(glob(f"../exports/groundtruth/Annotated/Old_Annotations/{ET}*.xlsx")[0])
-        # notes_selected2 = pd.read_excel(glob(f"../exports/groundtruth/Annotated/{ET}*.xlsx")[0])
-        # notes_selected = notes_selected1[~notes_selected1.UID.isin(notes_selected2.UID)]
-        
-        notes_selected = pd.read_excel(glob(f"../exports/groundtruth/Test2/Annotated/{ET}*.xlsx")[0])
+      
+        notes_selected = pd.read_excel(glob(f"../exports/groundtruth/T-SET/Annotated/{ET}*.xlsx")[0])
 
         notes_selected = notes_selected.groupby("UID")[[f"{ET}_similarity", f"gt_{ET}", "is_keyword_present", "Sentence_dictionary","Lemma"]].agg(lambda x: max(x) if len(set(x))>1 else set(x).pop()).reset_index()
         notes_selected["Events"] = extract_events(model,notes_selected.Sentence_dictionary)
