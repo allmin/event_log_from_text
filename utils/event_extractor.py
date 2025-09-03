@@ -22,6 +22,7 @@ class EventExtractor:
         self.is_event_model_type = is_event_model_type
         self.attribute_model_type = attribute_model_type
         self.error_logs = []
+        #dictionary denotes keyword matching, biolord denotes embedding similarity
         if event_name_model_type == "biolord":
             self.model = SentenceTransformer('FremyCompany/BioLORD-2023')
         elif event_name_model_type == "dictionary":

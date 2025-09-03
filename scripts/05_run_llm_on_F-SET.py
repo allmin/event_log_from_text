@@ -6,18 +6,12 @@ parent_dir = os.path.abspath(os.path.join(os.getcwd(), '..'))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 from utils.event_extractor import EventExtractor
+from config import event_types, event_description_dict_llm
 
 def extract_events_funct(sentences, extractor=None, evidence={'keywords':[],'event_names':[],'similarities':[]}, get_keyword=None, get_phrase=None):
-    event_types = ["Pain", "Sleep", "Excretion", "Eating", "Family"]
-    event_description_dict = {
-                            "Eating": "The patient takes food into their body by mouth.",
-                            "Excretion": "The patient discharges waste matter from their body.",
-                            "Family": "The patient has a visit, call, or communication with a family member.",
-                            "Pain": "The patient reports or shows signs of pain.",
-                            "Sleep": "The patient is sleeping, or the sleep’s quality or quantity is described."
-                            }
+    global event_description_dict_llm, event_types
     # event_description_list = [f"{k} : {v}" for (k,v) in event_description_dict.items()]
-    events = extractor.extract_events(sentences=sentences, event_names=event_types, event_descriptions=event_description_dict, threshold=0.2, prompt_evidence=evidence, get_keyword=get_keyword, get_phrase=get_phrase)
+    events = extractor.extract_events(sentences=sentences, event_names=event_types, event_descriptions=event_description_dict_llm, threshold=0.2, prompt_evidence=evidence, get_keyword=get_keyword, get_phrase=get_phrase)
     return events
 
 
@@ -26,11 +20,15 @@ from itertools import product
 from glob import glob
 import pandas as pd
 
-similarity_columns = ["Excretion"]#,"Sleep","Pain","Eating","Family"]
+event_types
 for get_keyword, get_phrase in [i for i in product([False,True],[False,True])]:
-    for ET in similarity_columns:
+    for ET in event_types:
         os.makedirs(f"../exports/llm/{ET}", exist_ok=True)
-        file = glob(f"../exports/groundtruth/F-SET/Generated/{ET}*.pkl")[0]
+        try:
+            file = glob(f"../exports/groundtruth/F-SET/Generated/{ET}*.pkl")[0]
+        except:
+            print(f"No file found for {ET}")
+            continue
         file_name = os.path.basename(file).strip(".pkl")
         df = pd.read_pickle(file)
         df.Similarity = df.Similarity.astype(str)
