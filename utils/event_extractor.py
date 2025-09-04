@@ -77,7 +77,9 @@ class EventExtractor:
     
     def extract_events(self, sentences, event_names, event_descriptions=None, threshold=0.2, 
                        prompt_evidence={'keywords':[],'event_names':[],'similarities':[]},
-                       get_keyword=False, get_phrase=False, embedder_method=1):
+                       keyword_output=False, phrase_output=False, 
+                       keyword_input=False, embedder_input=False,
+                       embedder_method=1):
         self.event_list = []
         self.embedder_method=embedder_method
         self.sentences = sentences
@@ -91,8 +93,10 @@ class EventExtractor:
         self.predefined_event_names = event_names
         self.predefined_event_names_w_unknown = event_names + ["Unknown"]
         self.threshold = threshold
-        self.get_keyword = get_keyword
-        self.get_phrase = get_phrase
+        self.keyword_output = keyword_output
+        self.phrase_output = phrase_output
+        self.keyword_input = keyword_input
+        self.embedder_input = embedder_input
         self.prompt_evidence = prompt_evidence
         self.extract_is_event()
         self.extract_event_names()
@@ -370,24 +374,23 @@ class EventExtractor:
         if ind < len(self.prompt_evidence["keywords"]):
             keyword_evidence = self.prompt_evidence["keywords"][ind]
             event_evidence= self.prompt_evidence["event_names"][ind]
-        additional_facts_clause = "\n You may consider the additional facts if they are reasonable. Ignore otherwise"
-        if len(self.prompt_evidence["keywords"]) == 0 and len(self.prompt_evidence["similarities"]) == 0:
+            similarities = self.prompt_evidence["similarities"][ind]
+            similarities = {k:f"{v:0.2f}" for (k,v) in similarities.items()}
+        
+        additional_facts_clause = "\n You may consider the additional facts if they are reasonable. Ignore otherwise."
+        if self.keyword_input==False and self.embedder_input==False:
             evidence = ""
-        elif len(self.prompt_evidence["keywords"])!=0 and len(self.prompt_evidence["similarities"]) == 0:
+        elif self.keyword_input==True and self.embedder_input==False:
             evidence = f"""Additional facts:
             A keyword matching algorithm without context, detected keyword(s): {keyword_evidence}
             and assigned event type: {event_evidence}.""" + additional_facts_clause
-        elif len(self.prompt_evidence["keywords"])==0 and len(self.prompt_evidence["similarities"])!= 0:
-            similarities = self.prompt_evidence["similarities"][ind]
-            similarities = {k:f"{v:0.2f}" for (k,v) in similarities.items()}
+        elif self.keyword_input==False and self.embedder_input==True:
             evidence = f"""Additional facts:
             A sentence embedder, assigned following similarity score to  
             each of the event type labels: {similarities}.""" + additional_facts_clause
-        elif len(self.prompt_evidence["keywords"])!=0 and len(self.prompt_evidence["similarities"])!= 0:
-            similarities = self.prompt_evidence["similarities"][ind]
-            similarities = {k:f"{v:0.2f}" for (k,v) in similarities.items()}
+        elif self.keyword_input==True and self.embedder_input==True:
             evidence = f"""Additional facts:
-            A keyword matching algorithm without context, detected keyword(s): {self.prompt_evidence["keywords"][ind]}
+            A keyword matching algorithm without context, detected keyword(s): {keyword_evidence}
             and assigned event type: {event_evidence}
             A sentence embedder, assigned following similarity score to  
             each of the event type labels: {similarities}.""" + additional_facts_clause       
@@ -403,18 +406,17 @@ class EventExtractor:
         for ind, sentence in enumerate(self.sentences):
             start_time = time.perf_counter()
             evidence = self.get_evidence(ind)   
-            
-            if not self.get_keyword and not self.get_phrase:
-                get_keyword_clause = ""
+            if not self.keyword_output and not self.phrase_output:
+                keyword_output_clause = ""
                 output_format = """{{"event type":<chosen event type>}}"""
-            elif self.get_keyword and not self.get_phrase:
-                get_keyword_clause = " along with keywords that support each event type"
+            elif self.keyword_output and not self.phrase_output:
+                keyword_output_clause = " along with keywords that support each event type"
                 output_format = """{{"event type":<chosen event type>,"keywords":{{<chosen event type>:<keyword>}}}}"""
-            elif not self.get_keyword and self.get_phrase:
-                get_keyword_clause = " along with quotes from the text that support each event type"
+            elif not self.keyword_output and self.phrase_output:
+                keyword_output_clause = " along with quotes from the text that support each event type"
                 output_format = """{{"event type":<chosen event type>,"phrases":{{<chosen event type>:<quote>}}}}"""
             else:
-                get_keyword_clause = " along with quotes and keywords from the text that support each event type"
+                keyword_output_clause = " along with quotes and keywords from the text that support each event type"
                 output_format = """{{"event type":<chosen event type>, "keywords":{{<chosen event type>:<keyword>}}, "phrases":{{<chosen event type>:<quote>}}}}"""
 
             if self.event_descriptions:
@@ -426,7 +428,7 @@ class EventExtractor:
                 unknown_clause = """choose "Unknown" if none of the other event type are applicable."""
             prompt = f"""Given the sentence: {sentence}. 
             and the following event types: {event_w_description} 
-            choose the most relevant event type(s) for the sentence{get_keyword_clause}.
+            choose the most relevant event type(s) for the sentence{keyword_output_clause}.
             {unknown_clause}
             {evidence}
             Output ONLY a JSON: {output_format}"""
@@ -522,7 +524,7 @@ if __name__ == "__main__":
                                 prompt_evidence={'keywords':DICT.keywords, 
                                                  'event_names':DICT.predicted_events, 
                                                  'similarities':BIOLORD.similarities_dict},
-                                get_phrase=True, get_keyword=True)
+                                phrase_output=True, keyword_output=True)
     print("LLAMA_all_evidence_events:",LLAMA2.event_list)
     # sudo kill -9 $(nvidia-smi | awk 'NR>8 {print $5}' | grep -E '^[0-9]+$')
     

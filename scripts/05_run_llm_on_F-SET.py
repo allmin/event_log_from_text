@@ -1,6 +1,8 @@
 import pandas as pd
 import os, sys
 from datetime import datetime
+from itertools import product
+from glob import glob
 
 parent_dir = os.path.abspath(os.path.join(os.getcwd(), '..'))
 if parent_dir not in sys.path:
@@ -8,20 +10,23 @@ if parent_dir not in sys.path:
 from utils.event_extractor import EventExtractor
 from config import event_types, event_description_dict_llm
 
-def extract_events_funct(sentences, extractor=None, evidence={'keywords':[],'event_names':[],'similarities':[]}, get_keyword=None, get_phrase=None):
+def extract_events_funct(sentences, extractor=None, evidence={'keywords':[],'event_names':[],'similarities':[]}, keyword_output=None, phrase_output=None):
     global event_description_dict_llm, event_types
-    # event_description_list = [f"{k} : {v}" for (k,v) in event_description_dict.items()]
-    events = extractor.extract_events(sentences=sentences, event_names=event_types, event_descriptions=event_description_dict_llm, threshold=0.2, prompt_evidence=evidence, get_keyword=get_keyword, get_phrase=get_phrase)
+    events = extractor.extract_events(sentences=sentences, event_names=event_types, event_descriptions=event_description_dict_llm, threshold=0.2, prompt_evidence=evidence, keyword_output=keyword_output, phrase_output=phrase_output)
     return events
 
 
-
-from itertools import product
-from glob import glob
-import pandas as pd
-
-event_types
-for get_keyword, get_phrase in [i for i in product([False,True],[False,True])]:
+def get_col_suffix(keyword_input, embedder_input):
+    col_suffix = "no"
+    if keyword_input and embedder_input:
+        col_suffix = "all"
+    elif keyword_input and not embedder_input:
+        col_suffix = "dict"
+    elif not keyword_input and embedder_input:
+        col_suffix = "embedder"
+    return col_suffix
+    
+for keyword_output, phrase_output in [i for i in product([False,True],[False,True])]:
     for ET in event_types:
         os.makedirs(f"../exports/llm/{ET}", exist_ok=True)
         try:
@@ -36,33 +41,12 @@ for get_keyword, get_phrase in [i for i in product([False,True],[False,True])]:
         df_grouped.Similarity = df_grouped.Similarity.apply(eval)     
         disagreement_df_temp = df_grouped.copy()
         print(ET,len(disagreement_df_temp), datetime.now().strftime("%Y-%m-%d %H:%M:%S"), file_name)
-        print(f"KW:{get_keyword}, Phrase:{get_phrase}, Time Start: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}")
-        disagreement_df_temp.loc[:,"LLM_Events_no_evidence"] = extract_events_funct(disagreement_df_temp.Sentence_dictionary, 
-                                                                            get_keyword=get_keyword, get_phrase=get_phrase,
-                                                                            extractor=EventExtractor(event_name_model_type="llama3", 
-                                                                                                    attribute_model_type="None"))
-        disagreement_df_temp.loc[:,"LLM_Events_dict_evidence"] = extract_events_funct(disagreement_df_temp.Sentence_dictionary, 
-                                                                                get_keyword=get_keyword, get_phrase=get_phrase,
-                                                                                extractor=EventExtractor(event_name_model_type="llama3", attribute_model_type="None"),
-                                                                                evidence={'keywords':disagreement_df_temp.Keyword.tolist(), 
-                                                                                        'event_names':disagreement_df_temp.Event_Name_dictionary.tolist(), 
-                                                                                        'similarities':[]})
-        disagreement_df_temp.loc[:,"LLM_Events_embedder_evidence"] = extract_events_funct(disagreement_df_temp.Sentence_dictionary, 
-                                                                                          get_keyword=get_keyword, get_phrase=get_phrase,
-                                                                                    extractor=EventExtractor(event_name_model_type="llama3", attribute_model_type="None"),
-                                                                                    evidence={'keywords':[], 
-                                                                                            'event_names':[], 
-                                                                                            'similarities':disagreement_df_temp.Similarity.tolist()})
-        disagreement_df_temp.loc[:,"LLM_Events_all_evidence"] = extract_events_funct(disagreement_df_temp.Sentence_dictionary, 
-                                                                                     get_keyword=get_keyword, get_phrase=get_phrase,
-                                                                            extractor=EventExtractor(event_name_model_type="llama3", attribute_model_type="None"),
-                                                                            evidence={'keywords':disagreement_df_temp.Keyword.tolist(), 
-                                                                                        'event_names':disagreement_df_temp.Event_Name_dictionary.tolist(), 
-                                                                                        'similarities':disagreement_df_temp.Similarity.tolist()})
-        disagreement_df_temp.loc[:,'Event_Name_LLM_Events_no_evidence'] = disagreement_df_temp['LLM_Events_no_evidence'].apply(lambda x: x['event'])
-        disagreement_df_temp.loc[:,'Event_Name_LLM_Events_dict_evidence'] = disagreement_df_temp['LLM_Events_dict_evidence'].apply(lambda x: x['event'])
-        disagreement_df_temp.loc[:,'Event_Name_LLM_Events_embedder_evidence'] = disagreement_df_temp['LLM_Events_embedder_evidence'].apply(lambda x: x['event'])
-        disagreement_df_temp.loc[:,'Event_Name_LLM_Events_all_evidence'] = disagreement_df_temp['LLM_Events_all_evidence'].apply(lambda x: x['event'])
-        disagreement_df_temp.to_pickle(f"../exports/llm/{ET}/{file_name}_kw_{get_keyword}_phrase_{get_phrase}.pkl")
-        disagreement_df_temp.to_excel(f"../exports/llm/{ET}/{file_name}_kw_{get_keyword}_phrase_{get_phrase}.xlsx", index=False)
+        print(f"KW:{keyword_output}, Phrase:{phrase_output}, Time Start: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}")
+        evidence={'keywords':disagreement_df_temp.Keyword.tolist(), 'event_names':disagreement_df_temp.Event_Name_dictionary.tolist(), 'similarities':disagreement_df_temp.Similarity.tolist()}
+        for keyword_input, embedder_input in [i for i in product([False,True],[False,True])]:
+            col_suffix = get_col_suffix(keyword_input, embedder_input)
+            disagreement_df_temp.loc[:,f"LLM_Events_{col_suffix}_evidence"] = extract_events_funct(disagreement_df_temp.Sentence_dictionary,                                                                        evidence=evidence})
+            disagreement_df_temp.loc[:,f"Event_Name_LLM_Events_{col_suffix}_evidence"] = disagreement_df_temp[f"LLM_Events_{col_suffix}_evidence"].apply(lambda x: x['event'])
+        disagreement_df_temp.to_pickle(f"../exports/llm/{ET}/{file_name}_kw_{keyword_output}_phrase_{phrase_output}.pkl")
+        disagreement_df_temp.to_excel(f"../exports/llm/{ET}/{file_name}_kw_{keyword_output}_phrase_{phrase_output}.xlsx", index=False)
         
