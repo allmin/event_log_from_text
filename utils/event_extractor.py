@@ -311,18 +311,12 @@ class EventExtractor:
                 anti_label_vecs = np.array(self.anti_label_embeddings).astype('float32')
                 self.anti_similarities = np.dot(query_vecs, anti_label_vecs.T)
                 self.similarities = np.dot(query_vecs, label_vecs.T)
-                
-                
-        
         end_time = time.perf_counter()
         elapsed_time = end_time - start_time
         time_per_sentence = elapsed_time/len(self.sentences)
         self.predicted_events = [i.split(' : ')[0] for i in self.predicted_events]
         self.event_detection_time = [time_per_sentence]*len(self.sentences)
 
-
-
-    
     def get_event_names(self, threshold):
         indices = [
             [int(idx[0]),sim[0]] if sim[0] > threshold else [-1,sim]
@@ -376,7 +370,6 @@ class EventExtractor:
             event_evidence= self.prompt_evidence["event_names"][ind]
             similarities = self.prompt_evidence["similarities"][ind]
             similarities = {k:f"{v:0.2f}" for (k,v) in similarities.items()}
-        
         additional_facts_clause = "\n You may consider the additional facts if they are reasonable. Ignore otherwise."
         if self.keyword_input==False and self.embedder_input==False:
             evidence = ""
@@ -524,7 +517,8 @@ if __name__ == "__main__":
                                 prompt_evidence={'keywords':DICT.keywords, 
                                                  'event_names':DICT.predicted_events, 
                                                  'similarities':BIOLORD.similarities_dict},
-                                phrase_output=True, keyword_output=True)
+                                phrase_output=True, keyword_output=True,
+                                keyword_input=True, embedder_input=True,)
     print("LLAMA_all_evidence_events:",LLAMA2.event_list)
     # sudo kill -9 $(nvidia-smi | awk 'NR>8 {print $5}' | grep -E '^[0-9]+$')
     
