@@ -48,11 +48,13 @@ for get_keyword, get_phrase in [i for i in product([False,True],[False,True])]:
                                                                                         'event_names':disagreement_df_temp.Event_Name_dictionary.tolist(), 
                                                                                         'similarities':[]})
         disagreement_df_temp.loc[:,"LLM_Events_embedder_evidence"] = extract_events_funct(disagreement_df_temp.Sentence_dictionary, 
+                                                                                          get_keyword=get_keyword, get_phrase=get_phrase,
                                                                                     extractor=EventExtractor(event_name_model_type="llama3", attribute_model_type="None"),
                                                                                     evidence={'keywords':[], 
                                                                                             'event_names':[], 
                                                                                             'similarities':disagreement_df_temp.Similarity.tolist()})
         disagreement_df_temp.loc[:,"LLM_Events_all_evidence"] = extract_events_funct(disagreement_df_temp.Sentence_dictionary, 
+                                                                                     get_keyword=get_keyword, get_phrase=get_phrase,
                                                                             extractor=EventExtractor(event_name_model_type="llama3", attribute_model_type="None"),
                                                                             evidence={'keywords':disagreement_df_temp.Keyword.tolist(), 
                                                                                         'event_names':disagreement_df_temp.Event_Name_dictionary.tolist(), 
