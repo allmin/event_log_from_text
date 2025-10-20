@@ -1,6 +1,17 @@
 # Event Log Extraction from Text
 
-This project focuses on extracting event logs from textual data, specifically using MIMIC-III CSV files.
+This repository contains the code and resources used in our research paper:
+
+**_Extracting Events from Nursing Notes: A MIMIC-III Case Study_**  
+by **Allmin Susaiyah** and **Natalia Sidorova**
+
+📄 **Download the paper:** [https://www.genai4pm2025.info/179.pdf](https://www.genai4pm2025.info/179.pdf)
+
+---
+
+In this project, we investigate the selective use of language models to extract structured event logs from unstructured clinical text — specifically, nursing notes from the MIMIC-III dataset.
+
+---
 
 ## Setup Instructions
 
